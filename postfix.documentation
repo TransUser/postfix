@@ -1,0 +1,529 @@
+
+************************************************
+
+	*** Настройка почтового сервера Postfix ***
+
+************************************************
+
+Характеристики сервера:
+	Архитектура: x86-64
+	Имя модели: Intel(R) Core(TM) i3-2100 CPU @ 3.10GHz
+	Ядер: 2
+	Потоков на ядро: 2
+	Caches:
+		L1: 64 KiB
+		L2: 512 KiB
+		L3: 3 MiB
+	MemTotal: 1973196 kB (1.9 Gi) 	# общий объем RAM
+	SwapTotal: 2097148 kB (2.0 Gi) 	# файл подкачки
+	Hard-disk:
+		VB0252EAVER		/dev/sda 	250GB
+		VB0252EAVER		/dev/sdb 	250GB
+
+Система: 
+	ubuntu-22.04-live-server-amd64 (оф. сайт https://ubuntu.com/download/server)
+	Версия ядра: 
+		5.15.0-41-generic
+	Разрядность:
+		x86-64
+
+------------------------------------------------
+
+Открытые порты
+
+*	просматривал с помощью команд:
+		sudo netstat -tulpn или sudo ss -tulpn или sudo lsof -i -P
+
+22/tcp   | open | postfix
+80/tcp   | open | http
+110/tcp  | open | pop3
+143/tcp  | open | imap
+465/tcp  | open | smtps
+587/tcp  | open | submission
+993/tcp  | open | imaps
+995/tcp  | open | pop3s
+
+------------------------------------------------
+
+Вход в систему:
+	login: user
+	password: 12345
+
+	*для root такой же пароль
+
+Gmail:
+	transneft.help@gmail.com
+	User@12345
+
+------------------------------------------------
+
+компьютера в сети его hostname:
+	mail-server.com (ввод в терминал uname -n или hostname)
+
+чтобы изменить название хоста ввод в терминал sudo hostname <новое название хоста>
+
+------------------------------------------------
+
+Основные команды для работы с сервером:
+
+	Проверка синтаксиса конфигурационных файлов Postfix
+		*	postfix check
+
+	Перезапуск службы postfix:
+		*	/etc/init.d/postfix restart
+		*	sudo systemctl restart postfix
+
+	Проверка статуса демона Postfix:
+
+		*	service postfix status
+
+	Просмотр текущих значений параметров Postfix
+		*	postconf
+
+	Просмотр стандартных значений параметров Postfix(значений по умолчанию)
+		*	postconf -d
+		Пример просмотра определенного значения
+		*	postconf | grep message_size_limit
+
+	Изменение значения параметра message_size_limit без перезагрузки (работает и после перезагрузки postfix)
+		*	postconf -e 'message_size_limit = 20480000'
+		*	postconf | grep message_size_limit
+
+	Основной файл для настройки конфигураций:
+		*	/etc/postfix/main.cf
+
+------------------------------------------------
+
+Работа с очередью
+
+	Просмотр очереди сообщений
+		*	mailq | less
+		*	postqueue -p | less
+
+	Просмотр кол-ва сообщений в очереди:
+		*	mailq | grep Request
+
+	Отправка всех сообщений, находящихся в очереди:
+		*	postqueue -f
+		*	mailq -q
+		*	postsuper -r ALL
+
+	Отправка сообщения с конкретным идентификатором:
+		*	postqueue -i <ID-сообщения>
+		*	postsuper -r <ID-сообщения>
+
+	Отправка всех сообщений для конкретного домена:
+		*	postqueue -s <домен>
+
+	Очистка почтовой очереди (удаление всех писем с очереди):
+		*	postsuper -d ALL
+		*	postsuper -d ID, где ID – идентификатор письма
+
+	Постановка письма на «удержание» 
+		(перевод в режим hold – postfix не будет пытаться отправить письмо получателю в таком режиме):
+
+		*	postsuper -h <ID-сообщения>
+		*	postsuper -h ALL – все сообщения перевести в режим hold
+
+	Снятие письма с режима «удержание»:
+
+		*	postsuper -H <ID-сообщения>
+		*	postsuper -H ALL – все сообщения перевести с режима hold в режим deferred
+
+------------------------------------------------
+
+Файл конфигурации Postfix
+
+
+	1)	Параметр inet_interfaces указывает на каких сетевых интерфейсах postfix должен ожидать соединений. По умолчанию MTA Postfix слушает на всех активных сетевых интерфейсах. Можно переопределить значение inet_interfaces , указав IP адрес (либо доменное имя) нужного сетевого интерфейса.
+
+		*	inet_interfaces = all
+
+	!!	Не стоит указывать внешний IP адрес в inet_interfaces. Иначе ваш почтовый сервер может быть использован для массовой рассылки злоумышленниками.
+
+	2)	myhostname = mail-server # Имя хоста. По умолчанию берется из системы, но лучше всегда указывать явно
+		mydomain = server.com	 # Домен сервера. По умолчанию выделяется из имени хоста отбрасыванием первой части, поэтому вручную указывать обычно не нужно
+		myorigin = $mydomain	 # Домен, с которого отправляется локальная почта. Автоматически дописывается при необходимости к исходящему адресу 
+
+	3)	# Домены, для которых данный сервер является конечной точкой доставки почты.
+		# Обычно лучше почтовые домены обслуживать через механизм virtual, поэтому в этом параметре
+		# чаще всего стоит лишь указать localhost и имя хоста, так, на всякий случай,
+		# можно вообще оставить значение пустым.
+
+		mydestination = $myhostname, mail.$mydomain, $mydomain, www.$mydomain, localhost.com, , localhost
+
+	4)	Доверенные внутренние сети, из которых мы будем принимать практически все соединения.
+
+		mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128 192.168.0.0/24 # 192.168.0.0/24 можно указать
+
+	5)	# Если у провайдера есть релей, через который вы хотите пересылать исходящую почту, то его можно указать в параметре relayhost:
+
+		# Тк я использовал почту gmail, чтобы корректно приходила почта на внешние почтовые gmail ящики, то relay настроен под него, в файле конфигурации
+		# закомментировал релей через самые распространенные почтовики
+
+		# Релей для исходящей почты в данном конфиге:
+		relayhost = [smtp.gmail.com]:587
+
+	6)	# Отменяем запросы к DNS для выяснения хоста назначение для исходящей почты.
+		# Всё пересылаем на релей, так что опрашивать DNS нам не нужно.
+		# В моем конфиге он закомментирован
+
+		disable_dns_lookups = yes
+
+------------------------------------------------
+
+Добавление поддержки TLS-шифрования трафика:
+
+	1)	smtp_use_tls = yes
+		smtpd_use_tls = yes
+		smtpd_tls_auth_only = yes
+		smtp_tls_note_starttls_offer = yes
+		smtpd_tls_key_file = /etc/postfix/ssl/smtpd.key
+		smtpd_tls_cert_file = /etc/postfix/ssl/smtpd.crt
+		smtpd_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+		smtpd_tls_loglevel = 1
+		smtpd_tls_received_header = yes
+		smtpd_tls_session_cache_timeout = 3600s
+		tls_random_source = dev:/dev/urandom
+
+		smtp_use_tls 					- использовать TLS, если удаленный сервер сообщает о поддержке TLS
+		smtpd_use_tls 					- сообщать клиентам о поддержке TLS
+		smtpd_tls_auth_only 			- использовать аутентификацию SMTP только для TLS-соединений
+		smtp_tls_note_starttls_offer	- фиксировать в логе имена серверов, выдающих сообщение STARTTLS, поддержка TLS для которых не включена
+		smtpd_tls_key_file 				- местонахождение закрытого ключа сервера
+		smtpd_tls_cert_file 			- местонахождение сертификата сервера
+		smtpd_tls_CAfile 				- местонахождение самоподписного доверенного сертификата
+		smtpd_tls_loglevel 				- детальность сообщений о TLS-активности, выводимых в лог
+		smtpd_tls_received_header 		- запрашивать заголовки сообщений с информацией о версии протокола и алгоритме шифрования
+		smtpd_tls_session_cache_timeout - время, в течение которого данные в кэше TLS-сессии считаются актуальными
+		tls_random_source 				- имя устройства-генератора псевдослучайных чисел (PRNG).
+
+	2)	Необходимо иметь почтовые учетные записи в Gmail, либо же любой 
+		другой почте. При отправке писем используем правила аутентификации на серверах последнего с использованием данных учетных записей.
+
+		Установка дополнительных пакетов:
+
+			*	apt install cyrus-imapd cyrus-clients cyrus-doc cyrus-admin sasl2-bin
+
+		Пересылка с использованием TLS
+
+		Использование релея не отменяет необходимости передавать содержимое сообщений по защищенному каналу на случай, если нестандартный порт будет обнаружен. Для этого на пересылающем сервере необходимо настроить работу TLS.
+
+		smtp_sasl_security_options = noanonymous
+		smtp_sasl_tls_security_options = noanonymous
+		tls_high_cipherlist = HIGH:@STRENGTH
+		smtpd_tls_loglevel = 3
+		smtpd_tls_protocols = !SSLv2, !SSLv3
+		smtp_tls_ciphers = high
+		smtp_tls_exclude_ciphers = aNULL, MD5, CAMELLIA
+		smtp_tls_security_level = encrypt
+		smtp_sasl_password_maps = hash:/etc/postfix/sasl/sasl_passwd.gmail
+
+		*	tls_high_cipherlist — HIGH:@STRENGTH выбирает шифры с 
+			высоким уровнем защиты и упорядочивает их в порядке уменьшения стойкости шифра.
+		*	smtp_tls_loglevel — уровень детализации ведения лога 
+			соединений сеансов TLS (0-4, нет-отладка).
+		*	smtp_tls_security_level — уровень безопасности при установке 
+			защищенного соединения. Значение may предполагает использование TLS при поддержке второй стороной.
+		*	smtp_tls_session_cache_database — имя файла базы для 
+			кэширования информации о TLS сессиях.
+		*	smtp_tls_CAfile — файл со списком сертификатов доверенных 
+			центров сертификаци.
+		*	smtp_tls_protocols — список поддерживаемых протоколов.
+		*	smtp_tls_ciphers — минимальный уровень шифрования.
+		*	smtp_tls_exclude_ciphers — список исключаемых шифров.
+
+------------------------------------------------
+
+OpenDKIM
+
+	DKIM (DomainKeys Identified Mail) — метод идентификации письма по доменным ключам.
+	DKIM настраивается на почтовом сервере для того, чтобы подписывать исходящие письма цифровой подписью. Наличие такой подписи в заголовке отправленного письма сообщает серверу-получателю, что оно действительно было отправлено с указанного домена.
+	В СПАМ-письмах часто в поле From: ставят е-mail, не имеющий совершенно никакого отношения к отправителю. В этом случае DKIM поможет распознать реальное письмо от спама. В отличие от других методов цифровой подписи письма, DKIM совместим с существующими форматами и протоколами и может быть плавно интегрирован в имеющиеся системы доставки и получения почты.
+
+	Подпись письма происходит на SMTP-сервере с помощью секретного ключа (Private key), а расшифровка подписи происходит на сервере-получателе или клиентской программе с помощью публичного ключа (Public key).
+
+
+	Инструкция по настройке связки Postfix и OpenDKIM
+
+	*	sudo aptitude install opendkim opendkim-tools
+
+	Ключи для подписи
+
+		Ключ для домена сервера и для селектора, равного имени сервера без домена
+
+		*	mkdir /etc/opendkim/
+		*	opendkim-genkey -D /etc/opendkim/ -d $(hostname -d) -s $(hostname)
+
+	Файлам ключей обязательно нужно дать доступ на чтение для группы, в которой работает OpenDKIM, а сам postfix добавить в ту же группу, чтобы тот мог подписывать письма подключаясь к демону OpenDKIM через его сокет:
+
+	*	chgrp opendkim /etc/opendkim/*
+	*	chmod g+r /etc/opendkim/*
+	*	gpasswd -a postfix opendkim
+
+	*	tee -a /etc/opendkim.conf  <<EOF
+			Canonicalization relaxed/relaxed
+			SyslogSuccess yes
+			KeyTable file:/etc/opendkim/keytable
+			SigningTable file:/etc/opendkim/signingtable
+			X-Header yes
+		EOF
+
+	Документация:	http://www.opendkim.org/opendkim.conf.5.html
+
+	Список ключей прописывается в файле /etc/opendkim/keytable в формате "название домен:селектор:/путь/до/ключа". Прописать ключ согласно FQDN сервера файле можно так:
+
+	*	echo $(hostname -f | sed s/\\./._domainkey./) $(hostname -d):$(hostname):$(ls /etc/opendkim/*.private) | tee -a /etc/opendkim/keytable
+
+	Количество ключей в файле может быть сколько угодно, для какого угодно числа доменов.
+
+	Укажем командой ниже почту каких доменов необходимо подписывать какими ключами в файле /etc/opendkim/signingtable в формате "домен название-ключа":
+
+	*	echo $(hostname -d) $(hostname -f | sed s/\\./._domainkey./) | tee -a /etc/opendkim/signingtable
+
+	Если хочется подписывать вообще всю исходящую почту то можно указать * вместо домена.
+
+	Настройка Postfix
+
+	Чтобы все письма отправлялись на подпись введем в терминале следующие команды:
+
+	*	postconf -e milter_default_action=accept
+	*	postconf -e milter_protocol=2
+	*	postconf -e smtpd_milters=unix:/var/run/opendkim/opendkim.sock
+	*	postconf -e non_smtpd_milters=unix:/var/run/opendkim/opendkim.sock
+
+	Указываем OpenDKIM где ему следует создавать сокет и дать для всего подходящие права:
+
+	*	echo 'SOCKET="local:/var/spool/postfix/var/run/opendkim/opendkim.sock"' | tee -a /etc/default/opendkim
+	*	mkdir -p /var/spool/postfix/var/run/opendkim
+	*	chown opendkim:opendkim /var/spool/postfix/var/run/opendkim
+
+	После этого необходимо перезапустить Postfix
+
+------------------------------------------------
+
+DOVECOT
+
+Почтовый сервер вряд-ли обойдется без возможности отправки почты по SMTP. Поддержка этого протокола уже есть в Postfix, но по умолчанию там нет никакой авторизации. Для добавления поддержки авторизации следует использовать Dovecot. Как бонус вы получите возможность просматривать ваши письма по протоколам POP3 и IMAP.
+
+Установка:
+
+*	sudo apt install -y dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd
+
+Для получения и доставки почты по IMAP будет использоваться Dovecot. Надо указать где будут хранится почтовые ящики и в каком формате. Для этого откройте файл /etc/dovecot/conf.d/10-mail.conf и установить значение параметра mail_location на следующее:
+
+*	sudo vi /etc/dovecot/conf.d/10-mail.conf
+		mail_location = maildir:/home/vmail/%d/%n
+
+	%d - означает домен
+	%n - имя пользователя
+
+В файле /etc/dovecot/conf.d/10-master.conf надо расскомментировать настройки для таких сервисов:
+
+> imaps - получение почты по протоколу IMAP с поддержкой SSL
+> pop3s - получение почты по протоколу POP3 с поддержкой SSL
+
+*	sudo vi /etc/dovecot/conf.d/10-master.conf
+		inet_listener imaps {
+			port = 993
+			ssl = yes
+		}
+		inet_listener pop3s {
+			port = 995
+			ssl = yes
+		}
+
+Надо включить протокол LMTP, он будет использоваться Postfix для доставки писем в почтовые ящики.
+
+service lmtp {
+	unix_listener /var/spool/postfix/private/dovecot-lmtp {
+		mode = 0600
+		user = postfix
+		group = postfix
+	}
+}
+
+Путь /var/spool/postfix/private/dovecot-lmtp - это сокет, на котором сервис будет ожидать подключения. Позже нам надо будет использовать его в конфигурации Postfix. И осталось настроить ещё один сокет для авторизации по SMTP:
+
+#Postfix smtp-auth
+unix_listener /var/spool/postfix/private/auth {
+	mode = 0666
+	user = postfix
+	group = postfix
+}
+
+В файле /etc/dovecot/conf.d/10-auth.conf надо включить метод авторизации plain login:
+
+*	sudo vi /etc/dovecot/conf.d/10-auth.conf
+		auth_mechanisms = plain login
+
+------------------------------------------------
+
+Пересылка исходящей почты через Gmail
+
+	Основные элементы, которые надо учесть в файле конфигурации Postfix:
+
+	*	relayhost = [smtp.gmail.com]:587 # пересылка исходящей почты 
+		через smtp gmail`a по порту 587, если пересылать через yandex или mail, то указывать 465 порт
+
+	*	smtp_tls_password_maps = hash:/etc/postfix/sasl/sasl_passwd.gmail
+	Берем hash, чтобы все данные были защищены. В файле sasl_passwd.gmail указываем в формате <локальная почта> <почта gmail>:<пароль>
+	Для gmail пришлось сделать двуфакторную авторизацию и добавить пароль для приложения в разделе безопасность, предварительно привязав номер телефона
+
+	virtual_alias_domains и virtual_alias_map прописаны в конфигурации, но не использованы
+
+------------------------------------------------
+
+Изменение правил брандмауэра, чтобы включить Postfix
+
+Если вы используете брандмауэр, вам нужно настроить его, чтобы разрешить Postfix и электронную почту. Брандмауэр, называемый ufw (простой брандмауэр), должен быть уже установлен в Ubuntu, чтобы вы могли добавить Postfix только одной строкой:
+
+*	sudo ufw allow Postfix
+
+В случае, если ufw отсутствует, сначала установите его с помощью этих двух команд:
+
+*	sudo apt install ufw
+*	sudo ufw enable
+
+После установки нужно будет указать ВСЕ порты, которые нужно использовать:
+
+*	sudo ufw allow ssh
+*	sudo ufw allow http
+*	sudo ufw allow https
+*	sudo ufw allow 20/tcp
+*	sudo ufw allow 21/tcp
+*	sudo ufw allow Postfix
+*	sudo ufw enable
+
+------------------------------------------------
+
+SSL
+
+*	mkdir /etc/postfix/ssl
+*	cd /etc/postfix/ssl
+
+Генерируем сертификаты:
+*	openssl genrsa -des3 -rand /etc/hosts -out smtpd.key 1024 
+*	chmod 600 smtpd.key 
+*	openssl req -new -key smtpd.key -out smtpd.csr 
+*	openssl x509 -req -days 3650 -in smtpd.csr -signkey smtpd.key -out smtpd.crt 
+*	openssl rsa -in smtpd.key -out smtpd.key.unencrypted 
+*	mv -f smtpd.key.unencrypted smtpd.key 
+*	openssl req -new -x509 -extensions v3_ca -keyout cakey.pem -out cacert.pem -days 3650
+
+Добавляем в Postfix следующее:
+
+*	postconf -e 'smtpd_tls_auth_only = no' 
+*	postconf -e 'smtp_use_tls = yes' 
+*	postconf -e 'smtpd_use_tls = yes' 
+*	postconf -e 'smtp_tls_note_starttls_offer = yes' 
+*	postconf -e 'smtpd_tls_key_file = /etc/postfix/ssl/smtpd.key' 
+*	postconf -e 'smtpd_tls_cert_file = /etc/postfix/ssl/smtpd.crt' 
+*	postconf -e 'smtpd_tls_CAfile = /etc/postfix/ssl/cacert.pem' 
+*	postconf -e 'smtpd_tls_loglevel = 1' 
+*	postconf -e 'smtpd_tls_received_header = yes' 
+*	postconf -e 'smtpd_tls_session_cache_timeout = 3600s' 
+*	postconf -e 'tls_random_source = dev:/dev/urandom' 
+
+------------------------------------------------
+
+Фильтрация содержимого входящих сообщений в Postfix средствами Spamassassin
+
+Потребуется пара пакетов, которые нужно установить: spamassassin и его клиент spamc.
+
+*	sudo apt-get install spamassassin spamc
+
+Пакет spamassassin содержит демон, который может быть вызван пользовательской программой, например procmail... но также может быть встроен в агент передачи почты, такой как postfix.
+
+С настройками по умолчанию spamassassin отключен, но при включении будет запускаться от имени пользователя root.
+
+------------------------------------------------
+
+ТЕСТИРОВАНИЕ ДОСТАВКИ ПОЧТЫ
+
+Предварительно установим mailutils
+
+*	sudo apt install mailutils
+
+В нем содердится команда mail и выполним следующую команду для отправки тестового письма:
+
+*	echo "Gmail config mail server" | mail -s "Configure postfix mail-server" transneft.help@internet.ru
+
+или так, если есть соответствующий архив в корневой директории
+
+*	echo "Gmail config mail server" | mail -s "Configure postfix mail-server" transneft.help@internet.ru -A arh.zip
+где arh.zip - архив с конфигурацией, который я создал утилитой zip, установленной через стандартный пакетный менеджер apt
+
+флаги:
+
+	-s задать заголовок
+	-A прикрепить вложение
+
+!! Кириллица на сервере поддерживается, добавил настроил ее через dpkg и соответствующие файлы конфигурации
+
+------------------------------------------------
+
+Переадресация системной почты
+
+Переадресация электронной почты для пользователя root, отправляемые на этот адрес, пересылались на внешний адрес электронной почты.
+Файл /etc/aliases содержит список альтернативных имен получателей электронных писем.
+
+*	sudo nano /etc/aliases
+
+Единственная содержащаяся в нем директива предписывает пересылать сгенерированные системой электронные сообщения пользователю root.
+Для вступления изменений в силу выполните следующую команду:
+
+*	sudo newaliases
+
+При запуске команды newaliases будет построена база данных псевдонимов, используемых командой mail. Эти псевдонимы берутся из файла конфигурации.
+Отправка электронных писем пользователю root с помощью следующей команды:
+
+*	echo "This is the body of the email" | mail -s "This is the subject line" root
+
+------------------------------------------------
+
+Просмотр почты
+	в этом каталоге содержатся дополнительные логи почтового сервера
+	#	/var/mail/<user name>
+
+Просмотр логов
+	журналы сервера электронной почты, запущенного в системе.
+	#	/var/log/maillog
+	#	/var/log/mail.log
+
+------------------------------------------------
+
+Список литературы:
+
+1	https://mdex-nn.ru/uploads/Postfix-Подробное%20руководство.pdf
+2	https://help.ubuntu.ru/wiki/postfix
+3	https://habr.com/ru/company/infowatch/blog/517896/
+4	http://www.opendkim.org/opendkim.conf.5.html
+5	https://www.dmosk.ru/miniinstruktions.php?mini=postfix-over-yandex
+6	https://mirror.math.princeton.edu/pub/postfix/postconf.5.html#smtp_tls_policy_maps
+7	https://habr.com/ru/post/151904/
+8	https://4admin.info/secure-mailing/
+9	https://4admin.info/relay-mailing/
+10	https://zurgl.com/how-to-configure-tls-encryption-in-postfix/
+11	https://lowendbox.com/blog/how-to-install-and-configure-postfix-on-ubuntu-16-04/
+13	https://internet-lab.ru/postfix_smtp_tls
+14	https://www.dmosk.ru/instruktions.php?object=dkim-postfix
+15	https://kuzevanov.ru/linux/smtp-server-tolko-dlja-otpravki-soobshhenij-v-ubuntu-18-04.html
+16	https://serveradmin.ru/nastrojka-ssl-tls-sertifikatov-lets-encrypt-v-postfix-i-dovecot/
+17	https://habr.com/ru/post/106314/
+18	https://www.namecheap.com/support/knowledgebase/article.aspx/9795/69/installing-and-configuring-ssl-on-postfixdovecot-mail-server/
+19	https://ru.wikipedia.org/wiki/OpenSSL
+20	https://qinet.ru/2011/04/384/
+
+21	https://blog.sedicomm.com/2018/10/24/4-sposoba-otpravki-vlozhenij-elektronnoj-pochty-iz-komandnoj-stroki-linux/
+
+22	https://help.ubuntu.com/community/OpenSSL
+23	https://losst.ru/kak-posmotret-otkrytye-porty-v-linux
+24	https://losst.ru/arhivatsiya-v-linux#Zip
+25	https://userman.ru/2020/05/05/linux-sozdanie-i-raspakovka-arhivov-v-komandnoj-stroke.html
+
+26	https://ru.wikipedia.org/wiki/Пакет_(сетевые_технологии)
+27	https://selectel.ru/blog/smtp-protocol/
+28	https://yandex.ru/search/?text=imap&clid=2270455&banerid=0701004840%3A62bea0115c0df7001bc00e2e&win=548&lr=47
+29	https://ru.wikipedia.org/wiki/POP3
+30	https://ru.wikipedia.org/wiki/SMTP
